@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SmartDispatch — StaGove</title>
+  <meta name="description" content="Автономен диспечер: знае колата и клиентите ти, планира маршрута, смята разход и печалба, учи се от всяка доставка." />
+  <meta name="theme-color" content="#0E1116" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div class="brand-text">
+        <span class="brand-name">SmartDispatch</span>
+        <span class="brand-sub" id="brandSub">by StaGove · autonomous dispatcher</span>
+      </div>
+    </div>
+    <div class="header-tools">
+      <button id="langToggle" class="lang-toggle" type="button" data-act="lang">EN</button>
+      <span id="statusPill" class="status-pill" data-state="idle">готов</span>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <main class="wrap">
+    <!-- ================= ROUTE ================= -->
+    <section class="view" id="view-route">
+      <div class="panel">
+        <div class="panel-head"><span class="step-tag">01</span><h2 id="t-input">Нов маршрут</h2></div>
+        <div id="driverBar" class="driver-bar"></div>
+        <div id="routeTypeBar" class="seg"></div>
+        <label class="field">
+          <span id="t-list">Постави списъка със спирки — какъвто формат е (WhatsApp, гласово, ръкописно)</span>
+          <textarea id="rawList" rows="6" placeholder="Иван Петров, ул. Граф Игнатиев 15, София, до 10:30, 0888123456"></textarea>
+        </label>
+        <div class="actions">
+          <button class="btn btn--ghost" type="button" data-act="sample" id="btnSample">Зареди пример</button>
+          <button class="btn btn--primary" type="button" data-act="plan" id="btnPlan">Планирай маршрута</button>
+        </div>
+        <div id="progress" class="progress" hidden></div>
+        <div id="errorBox" class="error-box" hidden></div>
+      </div>
+
+      <div class="panel" id="execPanel" hidden>
+        <div class="panel-head"><span class="step-tag">∑</span><h2 id="t-exec">Днешен диспечерски обзор</h2></div>
+        <div id="execBody"></div>
+      </div>
+
+      <div class="panel" id="costPanel" hidden>
+        <div class="panel-head"><span class="step-tag">лв</span><h2 id="t-cost">Разход, спестявания и печалба</h2></div>
+        <div id="costBody"></div>
+      </div>
+
+      <div class="panel" id="riskPanel" hidden>
+        <div class="panel-head"><span class="step-tag">!</span><h2 id="t-risk">Рискове преди тръгване</h2></div>
+        <div id="riskBody"></div>
+      </div>
+
+      <div class="panel" id="routePanel" hidden>
+        <div class="panel-head"><span class="step-tag">02</span><h2 id="t-route">Спирки по ред</h2>
+          <button class="btn btn--primary btn--sm" type="button" data-act="start" id="btnStart">Започни</button>
+        </div>
+        <ol id="rail" class="rail"></ol>
+        <button class="btn btn--primary" type="button" data-act="finish" id="btnFinish" hidden>Завърши деня и направи отчет</button>
+      </div>
+
+      <div class="panel" id="replanPanel" hidden>
+        <div class="panel-head"><span class="step-tag">↻</span><h2 id="t-replan">Преизчисление</h2></div>
+        <div id="replanBody"></div>
+      </div>
+    </section>
+
+    <!-- ================= DRIVER ================= -->
+    <section class="view" id="view-driver" hidden>
+      <div class="panel">
+        <div class="panel-head"><span class="step-tag">⛟</span><h2 id="t-driver">Профил на шофьора и колата</h2></div>
+        <div id="driverForm"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><span class="step-tag">≡</span><h2 id="t-drivers">Запазени профили</h2></div>
+        <div id="driverList"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><span class="step-tag">★</span><h2 id="t-perf">Представяне на шофьора</h2></div>
+        <div id="perfBody"></div>
+      </div>
+    </section>
+
+    <!-- ================= CLIENTS / MEMORY ================= -->
+    <section class="view" id="view-memory" hidden>
+      <div class="panel">
+        <div class="panel-head"><span class="step-tag">＋</span><h2 id="t-client">Профил на клиент</h2></div>
+        <p class="hint" id="t-client-hint">Въведи каквото знаеш за клиент — типично време за обслужване, паркиране, предпочитан час, бележки. Агентът ще ги ползва автоматично, когато този клиент или адрес се появи в маршрут.</p>
+        <div id="clientForm"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><span class="step-tag">◉</span><h2 id="t-clients">Клиенти и научена памет</h2></div>
+        <div id="clientList"></div>
+      </div>
+    </section>
+
+    <!-- ================= REPORT ================= -->
+    <section class="view" id="view-report" hidden>
+      <div class="panel">
+        <div class="panel-head"><span class="step-tag">▤</span><h2 id="t-report">Дневен отчет</h2></div>
+        <div id="reportBody"></div>
+      </div>
+    </section>
+
+    <!-- ================= SETTINGS ================= -->
+    <section class="view" id="view-settings" hidden>
+      <div class="panel">
+        <div class="panel-head"><span class="step-tag">⚙</span><h2 id="t-settings">Настройки</h2></div>
+        <div id="settingsForm"></div>
+      </div>
+      <div class="panel panel--autonomy">
+        <div class="panel-head"><span class="step-tag">∴</span><h2 id="t-auto">Защо това е автономен агент</h2></div>
+        <div id="autonomyBody"></div>
+      </div>
+      <div class="panel panel--log">
+        <details>
+          <summary><span class="step-tag">∵</span><span id="t-log">Журнал на решенията</span><span id="logCount" class="log-count">0</span></summary>
+          <div id="logBody" class="log-body"></div>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>StaGove Intl OU · SmartDispatch v3.0</span>
+    <span class="foot-dim">Groq · OpenStreetMap · OSRM · локални данни — нула повтарящ се разход</span>
+  </footer>
+
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js").catch(() => {}));
+    }
+  </script>
+</body>
+</html>
