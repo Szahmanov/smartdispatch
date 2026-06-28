@@ -25,8 +25,6 @@ const SAMPLE = `Иван Петров, ул. Граф Игнатиев 15, Со�
 
 /* ============================ data accessors ============================ */
 const drivers = () => store.get(K.drivers, []);
-const clients = () => store.get(K.clients, []);
-const memory = () => store.get(K.memory, {});
 const routes = () => store.get(K.routes, []);
 const settings = () => Object.assign({}, DEF_SETTINGS, store.get(K.settings, {}));
 function activeDriver() { const id = store.get(K.active, null); const ds = drivers(); return ds.find((d) => d.id === id) || ds[0] || null; }
@@ -94,22 +92,19 @@ function evaluateLabel(arr, c) { if (!c || c.kind === "none") return "on_time"; 
 /* ============================ NAVIGATION ============================ */
 const TABS = [
   { id: "route", bg: "Маршрут", en: "Route" }, { id: "driver", bg: "Шофьор", en: "Driver" },
-  { id: "memory", bg: "Клиенти", en: "Clients" }, { id: "report", bg: "Отчет", en: "Report" },
+  { id: "report", bg: "Отчет", en: "Report" },
   { id: "settings", bg: "Настройки", en: "Settings" },
 ];
 function renderTabs() {
-  const memN = clients().length || Object.keys(memory()).length;
   $("tabs").innerHTML = TABS.map((tb) => {
-    const n = tb.id === "memory" && memN ? `<span class="badge-n">${memN}</span>` : "";
-    return `<button class="tab ${tb.id === state.activeTab ? "active" : ""}" data-act="tab" data-tab="${tb.id}">${L(tb.bg, tb.en)}${n}</button>`;
+    return `<button class="tab ${tb.id === state.activeTab ? "active" : ""}" data-act="tab" data-tab="${tb.id}">${L(tb.bg, tb.en)}</button>`;
   }).join("");
 }
 function switchTab(id) {
   state.activeTab = id;
   TABS.forEach((tb) => { const v = $("view-" + tb.id); if (v) v.hidden = tb.id !== id; });
   renderTabs();
-  if (id === "driver") { if (!$("driverForm").innerHTML) renderDriverForm(null); renderDriverList(); renderPerf(); }
-  if (id === "memory") { if (!$("clientForm").innerHTML) renderClientForm(null); renderClientList(); }
+  if (id === "driver") { if (!$("driverForm").innerHTML) renderDriverForm(null); renderDriverList(); }
   if (id === "report") renderReport();
   if (id === "settings") { renderSettings(); renderAutonomy(); }
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -175,7 +170,6 @@ function saveDriver() {
   if (i >= 0) all[i] = d; else all.push(d);
   store.set(K.drivers, all); store.set(K.active, id);
   logEvent(L("профил", "profile"), `${d.name} · ${d.vehicleName || d.vehicleType}`);
-  renderDriverForm(null); renderDriverList(); renderDriverBar(); renderTabs(); renderPerf();
   if (state.plan) renderCost(state.plan);
 }
 function delDriver(id) { if (!confirm(L("Изтрий профила?", "Delete profile?"))) return; store.set(K.drivers, drivers().filter((x) => x.id !== id)); if (store.get(K.active) === id) store.set(K.active, (drivers()[0] || {}).id || null); renderDriverList(); renderDriverBar(); renderTabs(); }
@@ -186,71 +180,6 @@ function renderDriverList() {
       <div class="rc-sub">${esc(d.vehicleName || "")} · ${esc(d.cityCons)}/${esc(d.highwayCons)} L/100 · ${(FUELS.find((f) => f[0] === d.fuelType) || [, d.fuelType])[LANG === "bg" ? 1 : 2]} ${priceFor(d.fuelType).price.toFixed(2)} ${settings().currency}/L</div></div>
       <div class="rc-actions"><button class="mini-btn" data-act="edit-driver" data-id="${d.id}">${L("Промени", "Edit")}</button><button class="mini-btn btn--danger" data-act="del-driver" data-id="${d.id}">✕</button></div></div></div>`).join("") : `<div class="empty">${L("Още няма профили.", "No profiles yet.")}</div>`;
 }
-function renderPerf() {
-  const drv = activeDriver(); const rs = routes().filter((r) => !drv || r.driverId === drv.id);
-  if (!rs.length) { $("perfBody").innerHTML = `<div class="empty">${L("Завърши маршрут, за да се появи статистика.", "Finish a route to see stats.")}</div>`; return; }
-  const sum = (f) => rs.reduce((a, r) => a + (f(r) || 0), 0);
-  const deliveries = sum((r) => r.completedStops), onTime = sum((r) => r.onTimeStops);
-  $("perfBody").innerHTML = `<div class="kpis">
-    <div class="kpi"><b>${rs.length}</b><span>${L("маршрути", "routes")}</span></div>
-    <div class="kpi"><b>${deliveries}</b><span>${L("доставки", "deliveries")}</span></div>
-    <div class="kpi good"><b>${deliveries ? Math.round(onTime / deliveries * 100) : 0}%</b><span>${L("навреме", "on-time")}</span></div>
-    <div class="kpi"><b>${(sum((r) => r.fuelCost) / rs.length).toFixed(2)}</b><span>${L("ср. разход", "avg cost")} ${settings().currency}</span></div>
-    <div class="kpi accent"><b>${sum((r) => r.moneySaved).toFixed(2)}</b><span>${L("спестено общо", "total saved")} ${settings().currency}</span></div>
-    <div class="kpi"><b>${(sum((r) => r.costPerDelivery) / rs.length).toFixed(2)}</b><span>${L("ср. цена/доставка", "avg cost/stop")}</span></div></div>`;
-}
-
-/* ============================ CLIENT PROFILES ============================ */
-const PARK = [["low", "Лесно", "Easy"], ["medium", "Средно", "Medium"], ["high", "Трудно", "Hard"]];
-function renderClientForm(c) {
-  c = c || {};
-  $("clientForm").innerHTML = `
-    <input type="hidden" id="cf-id" value="${esc(c.id || "")}">
-    <div class="grid2">
-      <label class="field"><span>${L("Име на клиента", "Client name")}</span><input id="cf-name" value="${esc(c.name || "")}"></label>
-      <label class="field"><span>${L("Адрес (по желание)", "Address (optional)")}</span><input id="cf-address" value="${esc(c.address || "")}"></label>
-    </div>
-    <div class="grid3">
-      <label class="field"><span>${L("Типично време", "Typical handling")} (${L("мин", "min")})</span><input id="cf-handling" type="number" value="${c.handling != null ? c.handling : ""}" placeholder="${settings().handling}"></label>
-      <label class="field"><span>${L("Паркиране", "Parking")}</span><select id="cf-parking">${optList(PARK, c.parking || "low")}</select></label>
-      <label class="field"><span>${L("Предпочитан час", "Preferred time")}</span><input id="cf-window" value="${esc(c.window || "")}" placeholder="${L("след 13:00", "after 13:00")}"></label>
-    </div>
-    <div class="grid2">
-      <label class="field"><span>${L("Телефон", "Phone")}</span><input id="cf-phone" value="${esc(c.phone || "")}"></label>
-      <label class="field"><span>${L("Бележки за агента", "Notes for the agent")}</span><input id="cf-notes" value="${esc(c.notes || "")}" placeholder="${L("звъни преди да дойдеш", "call before arrival")}"></label>
-    </div>
-    <div class="actions"><button class="btn btn--primary" data-act="save-client">${L("Запази клиента", "Save client")}</button>
-      ${c.id ? `<button class="btn btn--ghost" data-act="new-client">${L("Нов клиент", "New client")}</button>` : ""}</div>`;
-}
-function saveClient() {
-  const id = $("cf-id").value || uid();
-  const c = { id, name: $("cf-name").value.trim(), address: $("cf-address").value.trim(), handling: $("cf-handling").value ? +$("cf-handling").value : null, parking: $("cf-parking").value, window: $("cf-window").value.trim(), phone: $("cf-phone").value.trim(), notes: $("cf-notes").value.trim() };
-  if (!c.name && !c.address) { alert(L("Въведи поне име или адрес.", "Enter at least a name or address.")); return; }
-  const all = clients(); const i = all.findIndex((x) => x.id === id);
-  if (i >= 0) all[i] = c; else all.push(c);
-  store.set(K.clients, all); logEvent(L("клиент", "client"), `${c.name || c.address} ${L("запазен", "saved")}`);
-  renderClientForm(null); renderClientList(); renderTabs();
-}
-function delClient(id) { if (!confirm(L("Изтрий клиента?", "Delete client?"))) return; store.set(K.clients, clients().filter((x) => x.id !== id)); renderClientList(); renderTabs(); }
-function renderClientList() {
-  const cs = clients(), mem = memory();
-  let html = cs.length ? cs.map((c) => `<div class="row-card"><div class="rc-top"><div>
-    <div class="rc-name">${esc(c.name || c.address)}</div>
-    <div class="rc-sub">${[c.handling ? c.handling + L("мин", "min") : "", c.parking !== "low" ? L("паркиране:", "parking:") + " " + (PARK.find((p) => p[0] === c.parking) || [])[LANG === "bg" ? 1 : 2] : "", c.window, c.notes].filter(Boolean).map(esc).join(" · ")}</div></div>
-    <div class="rc-actions"><button class="mini-btn" data-act="edit-client" data-id="${c.id}">${L("Промени", "Edit")}</button><button class="mini-btn btn--danger" data-act="del-client" data-id="${c.id}">✕</button></div></div></div>`).join("") : "";
-  const learned = Object.values(mem).filter((m) => m.timesSeen).map((m) => `<div class="row-card"><div class="rc-name">${esc(m.key)} <span class="chip learn">◉ ${L("научено", "learned")}</span></div>
-    <div class="rc-sub">${L("ср. обслужване", "avg handling")} ${Math.round(m.averageHandlingTime)}${L("мин", "min")} · ${L("виждан", "seen")} ${m.timesSeen}×${(m.riskNotes || []).length ? " · " + m.riskNotes.map(esc).join(", ") : ""}</div></div>`).join("");
-  $("clientList").innerHTML = (html || (learned ? "" : `<div class="empty">${L("Още няма клиенти. Добави горе или агентът ще се учи сам.", "No clients yet. Add above, or the agent will learn on its own.")}</div>`)) + learned;
-}
-/* merge saved client + learned memory for a stop */
-function clientContext(name, address) {
-  const cs = clients(), mem = memory();
-  const nk = normKey(name), ak = normKey(address);
-  const saved = cs.find((c) => (c.name && normKey(c.name) === nk) || (c.address && ak && normKey(c.address) === ak));
-  const learned = mem["customer:" + nk];
-  return { saved, learned };
-}
-
 /* ============================ PHASE 1 — perceive (Groq) ============================ */
 async function callGroq(messages, json) {
   const r = await fetch("/api/groq", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "llama-3.3-70b-versatile", temperature: 0.1, messages, response_format: json ? { type: "json_object" } : undefined }) });
@@ -285,24 +214,12 @@ async function osrmRoute(ordered) {
   try { const r = await fetch("/api/route?coords=" + encodeURIComponent(ordered.map((s) => `${s.lon},${s.lat}`).join(";"))); const d = await r.json(); const legs = d?.routes?.[0]?.legs; if (Array.isArray(legs)) { let km = 0; legs.forEach((l) => { out.legMin.push((l.duration || 0) / 60); km += (l.distance || 0) / 1000; }); out.totalKm = km; return out; } } catch (e) {}
   let km = 0; for (let i = 1; i < ordered.length; i++) { const d = haversineKm(ordered[i - 1], ordered[i]); out.legMin.push((d / CITY_SPEED_KMH) * 60); km += d; } out.totalKm = km; out.estimated = true; return out;
 }
-/* apply per-client handling + memory before ETA */
-function applyClientContext(stops) {
-  for (const s of stops) {
-    const drv = activeDriver(); s.handlingTime = (drv && drv.handling) || settings().handling; s.learnNotes = [];
-    const { saved, learned } = clientContext(s.name, [s.rawAddress, s.city].join(" "));
-    if (saved) {
-      if (saved.handling) { s.handlingTime = saved.handling; s.learnNotes.push(L(`профил: ${saved.handling}мин`, `profile: ${saved.handling}min`)); }
-      if (saved.parking === "high") { s.handlingTime += 7; s.learnNotes.push(L("трудно паркиране +7мин", "hard parking +7min")); }
-      if (!s.constraintText && saved.window) { s.constraintText = saved.window; s.learnNotes.push(L("час от профил", "time from profile")); }
-      if (saved.notes) s.learnNotes.push(esc(saved.notes));
-      if (saved.phone && !s.phone) s.phone = saved.phone;
-    }
-    if (learned && learned.timesSeen) {
-      if (!saved || !saved.handling) { s.handlingTime = Math.round(learned.averageHandlingTime) || s.handlingTime; s.learnNotes.push(L(`памет: ${s.handlingTime}мин`, `memory: ${s.handlingTime}min`)); }
-      (learned.riskNotes || []).forEach((n) => s.learnNotes.push(esc(n)));
-    }
-  }
+/* set handling time from driver profile before ETA */
+function applyDriverHandling(stops) {
+  const drv = activeDriver();
+  for (const s of stops) { s.handlingTime = (drv && drv.handling) || settings().handling; s.learnNotes = []; }
 }
+
 function computeETAs(ordered, legMin, startMin) { let clock = startMin; ordered.forEach((s, i) => { if (i > 0) clock += (ordered[i - 1].handlingTime || HANDLING_FALLBACK) + (legMin[i - 1] || 0); s.etaMinutes = clock; s.plannedEta = clock; s.arrival = minToHHMM(clock); }); }
 function assess(stops) { for (const s of stops) { s.constraint = parseConstraint(s.constraintText); s.label = evaluateLabel(s.etaMinutes, s.constraint); } }
 
@@ -352,7 +269,7 @@ async function planRoute() {
     if (!stops.length) throw new Error(L("Нито един адрес не е намерен.", "No address located."));
     renderProgress(steps, 2);
     const original = stops.slice();
-    applyClientContext(stops);
+    applyDriverHandling(stops);
     const optimized = nearestNeighbor(stops);
     const reordered = optimized.some((s, i) => s !== original[i]);
     const route = await osrmRoute(optimized);
@@ -455,21 +372,7 @@ function saveDetail(id) { const s = state.stops.find((x) => x.id === id); if (!s
 function completeStop(id, details) {
   const s = state.stops.find((x) => x.id === id); if (!s || s.done) return;
   s.done = true; s.completedAt = nowMin(); s.completion = details || { actualHandling: s.handlingTime, parking: "low", available: "yes", delayReason: "none", notes: "" }; s.finalLabel = s.label;
-  learnFromStop(s); logEvent(L("доставка", "delivery"), `${s.name}: ${L("доставено", "done")}${details ? " +" + L("детайли", "details") : ""}`); renderRail();
-}
-function learnFromStop(s) {
-  const mem = memory(); const ck = "customer:" + normKey(s.name);
-  const c = mem[ck] || { type: "customer", key: s.name, averageHandlingTime: 0, averageDelay: 0, timesSeen: 0, riskNotes: [], parking: "low", lastSeen: 0 };
-  const ah = (s.completion && s.completion.actualHandling) || s.handlingTime;
-  c.averageHandlingTime = c.timesSeen ? (c.averageHandlingTime * c.timesSeen + ah) / (c.timesSeen + 1) : ah;
-  const delay = (s.completedAt != null && s.plannedEta != null) ? Math.max(0, s.completedAt - s.plannedEta) : 0;
-  c.averageDelay = c.timesSeen ? (c.averageDelay * c.timesSeen + delay) / (c.timesSeen + 1) : delay;
-  c.timesSeen++; c.lastSeen = Date.now(); if (s.completion) c.parking = s.completion.parking || c.parking;
-  const addNote = (n) => { c.riskNotes = (c.riskNotes || []).filter((x) => x !== n); c.riskNotes.push(n); if (c.riskNotes.length > 4) c.riskNotes.shift(); };
-  if (s.completion && s.completion.available === "no") addNote(L("често липсва", "often unavailable"));
-  if (s.completion && s.completion.parking === "high") addNote(L("трудно паркиране", "hard parking"));
-  if (s.completion && s.completion.notes) addNote(s.completion.notes);
-  mem[ck] = c; store.set(K.memory, mem);
+  logEvent(L("доставка", "delivery"), `${s.name}: ${L("доставено", "done")}`); renderRail();
 }
 function etaAlong(anchor, order, startMin) { let clock = startMin, late = 0; const arr = []; let prev = anchor; order.forEach((s) => { clock += (prev.handlingTime || HANDLING_FALLBACK) + (haversineKm(prev, s) / CITY_SPEED_KMH) * 60; const lbl = evaluateLabel(clock, s.constraint); if (lbl === "late") late++; arr.push({ eta: clock }); prev = s; }); return { arr, late }; }
 function reportDelay(id, minutes) {
@@ -509,8 +412,7 @@ function finishRoute() {
   const drv = activeDriver(), st = settings(), plan = state.plan || {};
   const done = state.stops.filter((s) => s.done), late = state.stops.filter((s) => s.finalLabel === "late" || s.label === "late");
   const onTime = done.filter((s) => s.finalLabel !== "late").length;
-  const lessons = []; const mem = memory();
-  state.stops.forEach((s) => { const m = mem["customer:" + normKey(s.name)]; if (m && (m.riskNotes || []).length) lessons.push(`${s.name}: ${m.riskNotes.join(", ")}`); });
+  const lessons = [];
   const rec = {
     id: uid(), driverId: drv ? drv.id : null, date: new Date().toISOString().slice(0, 10),
     stops: state.stops.length, completedStops: done.length, lateStops: late.length, onTimeStops: onTime,
@@ -587,9 +489,6 @@ function applyStaticLabels() {
   set("t-input", "Нов маршрут", "New route"); set("t-list", "Постави списъка със спирки — какъвто формат е (WhatsApp, гласово, ръкописно)", "Paste the stop list — any format");
   set("t-exec", "Днешен диспечерски обзор", "Today's dispatch summary"); set("t-cost", "Разход, спестявания и печалба", "Cost, savings & profit");
   set("t-risk", "Рискове преди тръгване", "Risks before departure"); set("t-route", "Спирки по ред", "Stops in order"); set("t-replan", "Преизчисление", "Re-plan");
-  set("t-driver", "Профил на шофьора и колата", "Driver & vehicle profile"); set("t-drivers", "Запазени профили", "Saved profiles"); set("t-perf", "Представяне на шофьора", "Driver performance");
-  set("t-client", "Профил на клиент", "Client profile"); set("t-client-hint", "Въведи каквото знаеш за клиент — типично време за обслужване, паркиране, предпочитан час, бележки. Агентът ще ги ползва автоматично.", "Enter what you know about a client — typical handling, parking, preferred time, notes. The agent uses them automatically.");
-  set("t-clients", "Клиенти и научена памет", "Clients & learned memory"); set("t-report", "Дневен отчет", "Daily report"); set("t-settings", "Настройки", "Settings"); set("t-auto", "Защо това е автономен агент", "Why this is an autonomous agent"); set("t-log", "Журнал на решенията", "Decision log");
   $("btnSample").textContent = L("Зареди пример", "Load sample"); $("btnPlan").textContent = L("Планирай маршрута", "Plan route"); $("btnStart").textContent = L("Започни", "Start"); $("btnFinish").textContent = L("Завърши деня и направи отчет", "Finish day & make report");
   $("rawList").placeholder = L("Иван Петров, ул. Граф Игнатиев 15, София, до 10:30, 0888123456", "John Smith, 15 Baker St, Sofia, before 10:30, 0888123456");
 }
@@ -598,8 +497,6 @@ function applyLang() {
   if (state.plan) { renderExec(state.plan); renderCost(state.plan); renderRisks(state.plan.risks); renderRail(); }
   renderLog();
   // refresh whichever secondary tab is open
-  if (state.activeTab === "driver") { renderDriverForm(null); renderDriverList(); renderPerf(); }
-  if (state.activeTab === "memory") { renderClientForm(null); renderClientList(); }
   if (state.activeTab === "report") renderReport();
   if (state.activeTab === "settings") { renderSettings(); renderAutonomy(); }
 }
@@ -621,10 +518,6 @@ function dispatch(act, el) {
     case "derive-vehicle": deriveVehicleNow(); break;
     case "edit-driver": renderDriverForm(drivers().find((d) => d.id === id)); window.scrollTo({ top: 0, behavior: "smooth" }); break;
     case "del-driver": delDriver(id); break;
-    case "new-client": renderClientForm(null); window.scrollTo({ top: 0, behavior: "smooth" }); break;
-    case "save-client": saveClient(); break;
-    case "edit-client": renderClientForm(clients().find((c) => c.id === id)); window.scrollTo({ top: 0, behavior: "smooth" }); break;
-    case "del-client": delClient(id); break;
     case "stop-done": completeStop(id, null); break;
     case "stop-detail": toggleDetail(id); break;
     case "save-detail": saveDetail(id); break;
