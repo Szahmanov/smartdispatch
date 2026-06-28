@@ -128,6 +128,18 @@ function renderDriverBar() {
     <select id="driverSel" data-act="select-driver">${ds.map((d) => `<option value="${d.id}" ${act && act.id === d.id ? "selected" : ""}>${esc(d.name)} · ${esc(d.vehicleName || d.vehicleType)}</option>`).join("")}</select></label>`;
 }
 function renderDriverForm(d) {
+  const hasSaved = drivers().length > 0;
+  const wrap = $("driverFormWrap");
+  const btn  = $("btnEditDriver");
+  /* If we have a saved driver and no explicit edit target → hide form, show button */
+  if (hasSaved && d === null) {
+    if (wrap) wrap.hidden = true;
+    if (btn)  btn.hidden  = false;
+    return;
+  }
+  /* Otherwise show the form (new profile or editing existing) */
+  if (wrap) wrap.hidden = false;
+  if (btn)  btn.hidden  = true;
   d = d || {};
   const fp = priceFor(d.fuelType || "diesel"), cur = settings().currency;
   $("driverForm").innerHTML = `
@@ -603,7 +615,8 @@ function dispatch(act, el) {
     case "start": startRoute(); break;
     case "finish": finishRoute(); break;
     case "rt": setRouteType(el.dataset.rt); break;
-    case "new-driver": renderDriverForm(null); window.scrollTo({ top: 0, behavior: "smooth" }); break;
+    case "new-driver": renderDriverForm({}); window.scrollTo({ top: 0, behavior: "smooth" }); break;
+    case "toggle-driver-form": { const wrap = $("driverFormWrap"); const showing = wrap && !wrap.hidden; if (showing) { renderDriverForm(null); } else { renderDriverForm({}); window.scrollTo({ top: 0, behavior: "smooth" }); } break; }
     case "save-driver": saveDriver(); break;
     case "derive-vehicle": deriveVehicleNow(); break;
     case "edit-driver": renderDriverForm(drivers().find((d) => d.id === id)); window.scrollTo({ top: 0, behavior: "smooth" }); break;
